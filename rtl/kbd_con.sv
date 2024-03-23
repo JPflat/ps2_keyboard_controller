@@ -58,36 +58,36 @@ module kbd_con (
 //----------------------------------------------------------------------------------------
   always @(posedge clk50m) begin
     if(por_count != LP_POR_MAX) begin
-                              por_n                         <= 1'b0;
-                              por_count                     <= por_count + 16'h0001;
+                              por_n               <=  1'b0;
+                              por_count           <=  por_count + 16'h0001;
     end
     else begin
-                              por_n                         <= 1'b1;
-                              por_count                     <= por_count;
+                              por_n               <=  1'b1;
+                              por_count           <=  por_count;
     end
   end
-  assign                      reset_n                       = locked & por_n;
+  assign                      reset_n             =   locked & por_n;
 //----------------------------------------------------------------------------------------
 
 
-  kbd_ctrl	kbd_ctrl_inst (
-                              .clk                ( clk50m  ),
-                              .rst_n              ( reset_n ),
-                              .ps2_clk            ( ps2_clk ),
-                              .ps2_dat            ( ps2_dat ),
+  kbd_inf	kbd_inf_inst (
+                              .clk                ( clk50m      ),
+                              .rst_n              ( reset_n     ),
+                              .ps2_clk            ( ps2_clk     ),
+                              .ps2_dat            ( ps2_dat     ),
 
-                              .scode              ( scode ),
-                              .scode_en           ( scode_en ),
-                              .rx_err             ( rx_err ),
-                              .tx_err             ( tx_err )
+                              .scode              ( scode       ),
+                              .scode_en           ( scode_en    ),
+                              .rx_err             ( rx_err      ),
+                              .tx_err             ( tx_err      )
   );
 
   kbd_disp	kbd_disp_inst (
-                              .clk                ( clk50m  ),
-                              .rst_n              ( reset_n ),
-                              .scode              ( scode ),
-                              .scode_en           ( scode_en ),
+                              .clk                ( clk50m      ),
+                              .rst_n              ( reset_n     ),
+                              .scode              ( scode       ),
+                              .scode_en           ( scode_en    ),
 
-                              .scode_out          ( scode_out )
+                              .scode_out          ( scode_out   )
   );
 endmodule

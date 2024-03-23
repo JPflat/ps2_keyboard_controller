@@ -1,4 +1,7 @@
-module kbd_rx (
+module kbd_inf #(
+  parameter                   P_DET_TIMEOUT       = 32'd65535
+)
+(
   input wire                  clk,
   input wire                  rst_n,
 
@@ -11,19 +14,23 @@ module kbd_rx (
   output  wire  [7:0]         rx_err,
   output  wire  [7:0]         tx_err
 );
+  localparam                  LP_STATE_IDLE       = 2'b00;
+  localparam                  LP_STATE_RX         = 2'b01;
 
-  logic         [2:0]         ps2_clk_ff;                                                 // メタステ対策 
-  logic         [2:0]         ps2_dat_ff;                                                 // メタステ対策
-  logic                       ps2_clk_fedg;                                               // 立ち下がり検出
+  logic         [2:0]         pclk_ff;                                                    // メタステ対策 
+  logic         [2:0]         pdat_ff;                                                    // メタステ対策
+  logic                       pclk_pos;                                                   // 立ち上がり検出
+  logic                       pclk_neg;                                                   // 立ち下がり検出
+  logic                       stb;                                                        // スタートビット検出
+  logic                       spb;                                                        // ストップビット検出
 
-  logic         [3:0]         state;                                                      // ステートマシン
+  logic         [3:0]         pclk_cnt;                                                   // PS2クロックカウンタ
+  logic         [1:0]         state;                                                      // ステートマシン
   logic                       odd_pty;                                                    // 奇数パリティ
-  logic         [9:0]         ps2_d_para;                                                 // PS/2データ
+  logic         [9:0]         rx_reg;                                                     // PS/2データ
 
-  logic         [31:0]        tout_cnt;                                                   // タイムアウトカウンタ
-  logic         [33:0]        tout_cnt_d;                                                 // 前回の４倍以上
-  logic                       tout_det_on;
-  logic                       timeout;
+  logic         [31:0]        tocnt;                                                   // タイムアウトカウンタ
+  logic                       to;
 
   logic                       pty_err;
   logic                       stp_err;
@@ -35,15 +42,18 @@ module kbd_rx (
 
   always_ff @( posedge clk, negedge rst_n ) begin
     if(~rst_n) begin
-                              ps2_clk_ff          <=  3'b111;
-                              ps2_dat_ff          <=  3'b111;
+                              pclk_ff             <=  3'b111;
+                              pdat_ff             <=  3'b111;
     end
     else begin
-                              ps2_clk_ff          <=  {ps2_clk_ff[1:0], ps2_clk};
-                              ps2_dat_ff          <=  {ps2_dat_ff[1:0], ps2_dat};
+                              pclk_ff             <=  {pclk_ff[1:0], ps2_clk};
+                              pdat_ff             <=  {pdat_ff[1:0], ps2_dat};
     end
   end
-  assign                      ps2_clk_fedg        =   ps2_clk_ff[2] & !ps2_clk_ff[1];
+  assign                      pclk_pos            =   !pclk_ff[2] & pclk_ff[1];
+  assign                      pclk_neg            =   pclk_ff[2] & !pclk_ff[1];
+  assign                      stb                 =   (state == LP_STATE_IDLE) & (pclk_cnt == 4'd0) & (pdat_ff[2] == 1'b0) & pclk_neg;
+  assign                      spb                 =   (state == LP_STATE_RX)   & (pclk_cnt == 4'd9) & (pdat_ff[2] == 1'b1) & pclk_neg;
 
 
 // ---------------------------------------------------------------------------------------
@@ -52,74 +62,78 @@ module kbd_rx (
 
 // トリステート
   tri_state	tri_clk_inst (
-                              .bi                 ( ps2_clk_o   ),
-                              .oe                 ( ps2_ctri_en ),
-                              .od                 ( ps2_clk     ),
-                              .id                 ( ps2_mst_clk )
+                              .oe                 ( 0 ),
+                              .id                 ( ps2_mst_clk ),
+                              .od                 ( ps2_clk     )
   );
 
   tri_state	tri_dat_inst (
-                              .bi                 ( ps2_dat_o   ),
-                              .oe                 ( ps2_dtri_en ),
-                              .od                 ( ps2_dat     ),
-                              .id                 ( ps2_mst_dat )
+                              .oe                 ( 0 ),
+                              .id                 ( ps2_mst_dat ),
+                              .od                 ( ps2_dat     )
   );
+
+// PS/2クロックカウンタ
+  always_ff @( posedge clk, negedge rst_n ) begin
+    if(!rst_n) 
+                              pclk_cnt            <=  4'd0;
+    else if(state == LP_STATE_RX)
+      if( pclk_neg )
+        if(pclk_cnt >= 4'd9 )
+                              pclk_cnt            <=  4'd0;
+        else
+                              pclk_cnt            <=  pclk_cnt + 4'd1;
+      else
+                              pclk_cnt            <=  pclk_cnt;
+    else
+                              pclk_cnt            <=  4'd0;
+  end
 
 // ステートマシン
   always_ff @( posedge clk, negedge rst_n ) begin
     if(!rst_n) 
-                              state               <=  4'd15;
-    else if(!host_oe)
-      if(timeout)
-                              state               <=  4'd15;
-      else if(state >= 4'd10)
-        if((ps2_dat_ff[2] == 1'b0) && ps2_clk_fedg)
-                              state               <=  4'd0;                               // スタートビット取得
-        else
-                              state               <=  state;
-      else if(state == 4'd9)
-        if(ps2_clk_fedg)
-                              state               <=  4'd15;                              // ストップビット取得
-        else
-                              state               <=  state;
-      else if(ps2_clk_fedg)
-                              state               <=  state + 4'd1;                       // データ取得
-      else
-                              state               <=  state;
+                              state               <=  LP_STATE_IDLE;
     else
-                              state               <=  4'd0;                               // ホスト送信中
+      case(state)
+          LP_STATE_IDLE:
+            if(stb)
+                              state               <=  LP_STATE_RX;
+            else
+                              state               <=  state;
+          LP_STATE_RX:
+            if(spb || to)
+                              state               <=  LP_STATE_IDLE;
+            else
+                              state               <=  state;
+          default:                                                                        // 送信モード（未実装）
+                              state               <=  LP_STATE_IDLE;
+      endcase
   end
-  assign                      tout_det_on         =   state <= 4'd9;
 
+  assign                      tout_det_on         =   state <= 4'd9;
 
   always_ff @( posedge clk, negedge rst_n ) begin
     if(!rst_n) 
                               odd_pty             <=  1'b1;
-    else if(!host_oe)
-      if(state >= 4'd8)
-                              odd_pty             <=  1'b1;                               // 演算終了
-      else if((state >= 4'd0) && (state <= 4'd7))
-        if(ps2_clk_fedg)
-                              odd_pty             <=  odd_pty ^ ps2_dat_ff[2];            // 演算実行
-        else
-                              odd_pty             <=  odd_pty;
+    else if(state == LP_STATE_RX)
+      if(pclk_neg)
+                              odd_pty             <=  odd_pty ^ pdat_ff[2];               // 受信中は常に演算
       else
                               odd_pty             <=  odd_pty;
-
     else
-                              odd_pty             <=  1'b1;                               // ホスト送信中
+                              odd_pty             <=  1'b1;                               // 
   end
 
   always_ff @( posedge clk, negedge rst_n ) begin
     if(!rst_n) 
-                              ps2_d_para          <=  10'd0;
-    else if(!host_oe)
-        if(ps2_clk_fedg)
-                              ps2_d_para          <=  {ps2_dat_ff[2], ps2_d_para[9:1]};   // クロック立ち下がりで常に取得
+                              rx_reg          <=  10'd0;
+    else if( state == LP_STATE_RX )
+        if(pclk_neg)
+                              rx_reg          <=  {pdat_ff[2], rx_reg[9:1]};              // クロック立ち下がりで常に取得
         else
-                              ps2_d_para          <=  ps2_d_para;
+                              rx_reg          <=  rx_reg;
     else
-                              ps2_d_para          <=  10'd0;                              // ホスト送信中
+                              rx_reg          <=  rx_reg;
   end
 
   always_ff @( posedge clk, negedge rst_n ) begin
@@ -127,17 +141,12 @@ module kbd_rx (
                               scode               <=  8'd0;
                               scode_en            <=  1'b0;
     end
-    else if(!host_oe)
-      if((state == 4'd9) && ps2_clk_fedg) begin
-                              scode               <=  ps2_d_para[8:1];                    // データラッチ
+    else if( spb ) begin  
+                              scode               <=  rx_reg[8:1];                        // データラッチ
                               scode_en            <=  1'b1;
-      end
-      else begin
-                              scode               <=  scode;                              // 前データの結果キープ
-                              scode_en            <=  1'b0;
-      end
+    end
     else begin
-                              scode               <=  8'd0;                               // ホスト送信中
+                              scode               <=  scode;
                               scode_en            <=  1'b0;
     end
   end
@@ -146,71 +155,58 @@ module kbd_rx (
 // タイムアウト管理
   always_ff @( posedge clk, negedge rst_n ) begin
     if(!rst_n) 
-                              tout_cnt            <=  32'd0;
-    else if(!host_oe && tout_det_on)
-      if(ps2_clk_ff[2] != ps2_clk_ff[1])
-                              tout_cnt            <=  32'd0;                              // クロック反転
+                              tocnt               <=  32'd0;
+    else if(state == LP_STATE_RX)
+      if(tocnt == P_DET_TIMEOUT)
+                              tocnt               <=  tocnt;                              // 保持；タイムアウト検知
+      else if(pclk_pos || pclk_neg)
+                              tocnt               <=  32'd0;                              // リセット；クロック反転
       else
-                              tout_cnt            <=  tout_cnt + 32'd1;
+                              tocnt               <=  tocnt + 32'd1;
     else
-                              tout_cnt            <=  32'd0;                              // ホスト送信中 or 受信待ち
+                              tocnt               <=  32'd0;
   end
 
-  always_ff @( posedge clk, negedge rst_n ) begin
-    if(!rst_n) 
-                              tout_cnt_d          <=  '1;
-    else if(!host_oe && tout_det_on)
-      if(ps2_clk_ff[2] != ps2_clk_ff[1])
-                              tout_cnt_d          <=  {tout_cnt[31:0], 2'b00};
-      else
-                              tout_cnt_d          <=  tout_cnt_d;
-    else
-                              tout_cnt_d          <=  '1;                                 // ホスト送信中 or 受信待ち
-  end
-
-  assign                      timeout             =   {2'b00, tout_cnt} >= tout_cnt_d;    // 前回の４倍以上でタイムアウト判定
+  assign                      to                  =   (tocnt == (P_DET_TIMEOUT - 32'd1));
 
 // エラー検知
   always_ff @( posedge clk, negedge rst_n ) begin
     if(!rst_n) 
                               pty_err             <=  1'b0;
-    else if(!host_oe)
-      if((state == 4'd8) && (odd_pty != ps2_dat_ff[2]))
-        if(ps2_clk_fedg)
-                              pty_err             <=  1'b1;
-        else
+    else if(stb)
+                              pty_err             <=  1'b1;                               // 受信開始でエラーセット
+    else if( (state == LP_STATE_RX) && (pclk_cnt == 4'd8) && (odd_pty == pdat_ff[2]) )
+      if(pclk_neg)
                               pty_err             <=  1'b0;
       else
-                              pty_err             <=  1'b0;
+                              pty_err             <=  pty_err;
     else
-                              pty_err             <=  1'b0;                               // ホスト送信中
+                              pty_err             <=  pty_err;
   end
 
   always_ff @( posedge clk, negedge rst_n ) begin
     if(!rst_n) 
                               stp_err             <=  1'b0;
-    else if(!host_oe)
-      if((state == 4'd9) &&  (ps2_dat_ff[2] == 1'b0))
-        if(ps2_clk_fedg)
-                              stp_err             <=  1'b1;
-        else
+    else if(stb)
+                              stp_err             <=  1'b1;                               // 受信開始でエラーセット
+    else if(spb)
                               stp_err             <=  1'b0;
-      else
-                              stp_err             <=  stp_err;                            // 前データの結果キープ
     else
-                              stp_err             <=  1'b0;                               // ホスト送信中
+                              stp_err             <=  stp_err;
   end
 
   always_ff @( posedge clk, negedge rst_n ) begin
     if(!rst_n) 
                               tout_err            <=  1'b0;
-    else if(!host_oe)
-      if(timeout)
+    else if(stb)
+                              tout_err            <=  1'b0;                               // 受信開始でエラー解除
+    else if( state == LP_STATE_RX )
+      if( to )
                               tout_err            <=  1'b1;
       else
-                              tout_err            <=  1'b0;
+                              tout_err            <=  tout_err;
     else
-                              tout_err            <=  1'b0;                               // ホスト送信中
+                              tout_err            <=  tout_err;
   end
 
   assign                      rx_err              =   {5'd0, tout_err, stp_err, pty_err};

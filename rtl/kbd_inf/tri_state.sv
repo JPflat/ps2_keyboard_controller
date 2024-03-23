@@ -1,26 +1,15 @@
 /*
   3ステートバッファ
   oe: Output Enable
-     0: input
-     1: output
+     0: open
+     1: enable
 */
 module tri_state (
-  inout   wire                bi,
   input   wire                oe,
-  input   wire                od,
-  output  reg                 id
+  input   wire                id,
+  output  wire                od
 );
 
-  logic                       oe_ff;          
-  logic                       od_ff;          
-
-  always @(posedge clk50m) begin
-                              id                  <=  bi;
-//                              id                  <=  oe_ff ? 1'b1 : bi;
-                              od_ff               <=  od;
-                              oe_ff               <=  oe;
-  end
-
-  assign                      bi                  =   oe_ff ? od_ff : 1'bz;   
+  assign                      od                  =   oe ? id : 1'bz;   
 
 endmodule
