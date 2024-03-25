@@ -32,20 +32,21 @@ module tb_key_con;
                               ps2_clk                       =   1'b1;
                               ps2_dat                       =   1'b1;
                               #(489);
-                              gen_tx_ps2_dtoh(8'h55, PS2_SPD_DEF, SIM_MODE);
-                              gen_tx_ps2_dtoh(8'h66, PS2_SPD_DEF, SIM_MODE);
-                              gen_tx_ps2_dtoh(8'h77, PS2_SPD_DEF, SIM_MODE);
-                              gen_tx_ps2_dtoh(8'h88, PS2_SPD_DEF, SIM_MODE);
-                              gen_tx_ps2_dtoh(8'h99, PS2_SPD_DEF, SIM_MODE);
-                              gen_tx_ps2_dtoh(8'hAA, PS2_SPD_DEF, SIM_MODE);
-                              gen_tx_ps2_dtoh(8'hBB, PS2_SPD_DEF, SIM_MODE);
-                              gen_tx_ps2_dtoh(8'hCC, PS2_SPD_DEF, SIM_MODE);
-                              gen_tx_ps2_dtoh(8'hDD, PS2_SPD_DEF, SIM_MODE);
+                              gen_tx_ps2_dtoh(8'h55, PS2_SPD_DEF, 5'd0, SIM_MODE);
+                              gen_tx_ps2_dtoh(8'h66, PS2_SPD_DEF, 5'd1, SIM_MODE);
+                              gen_tx_ps2_dtoh(8'h77, PS2_SPD_DEF, 5'd2, SIM_MODE);
+                              gen_tx_ps2_dtoh(8'h88, PS2_SPD_DEF, 5'd3, SIM_MODE);
+                              gen_tx_ps2_dtoh(8'h99, PS2_SPD_DEF, 5'd4, SIM_MODE);
+                              gen_tx_ps2_dtoh(8'hAA, PS2_SPD_DEF, 5'd0, SIM_MODE);
+                              gen_tx_ps2_dtoh(8'hBB, PS2_SPD_DEF, 5'd0, SIM_MODE);
+                              gen_tx_ps2_dtoh(8'hCC, PS2_SPD_DEF, 5'd0, SIM_MODE);
+                              gen_tx_ps2_dtoh(8'hDD, PS2_SPD_DEF, 5'd0, SIM_MODE);
                               #(500);
+                              $stop();
                               $finish();
     end
     
-  key_con
+  kbd_con
     dut    (
     .i_clk(TEST_CLK),
     .i_rst_n(TEST_RESET),

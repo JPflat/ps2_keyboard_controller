@@ -6,40 +6,91 @@
       10b -> 100us(max.)
       11b -> reserved
 */
-  parameter                   PS2_SPD_DEF                   =   2'b00;
-  parameter                   PS2_SPD_MIN                   =   2'b01;
-  parameter                   PS2_SPD_MAX                   =   2'b11;
-  parameter                   SIM_MODE                      =   1'b0;
-  parameter                   REAL_MODE                     =   1'b1;
+  parameter                   PS2_SPD_DEF         =   2'b00;
+  parameter                   PS2_SPD_MIN         =   2'b01;
+  parameter                   PS2_SPD_MAX         =   2'b11;
+  parameter                   SIM_MODE            =   1'b0;
+  parameter                   REAL_MODE           =   1'b1;
+  parameter                   REPEAT_DELAY        =   200;
+  parameter                   BREAK_CODE          =   8'hF0;
+  parameter                   INTVL_TO_BREAK_CODE =   30;
+
+  integer                     i;
 task gen_tx_ps2_dtoh; // generate ps/2
   input [7:0]   scan_code;
   input [1:0]   spd;
+  input [4:0]   rep;
   input         mode;
   begin
-        // 初期
+          // 初期化
                               ps2_clk                       =   1'b1;
                               ps2_dat                       =   1'b1;
                               #(10);
-        // 送信開始
-                              ps2_dat                       =   1'b0;                     // スタートビット
+                              for(i=0; i<3; i=i+1) begin
+          // 送信開始 
+                                ps2_dat           =   1'b0;                               // スタートビット
+                                ins_delay(spd, mode);
+                                ps2_clk           =   1'b0;
+          // データビット送信
+                                set_bit(scan_code[0], spd, mode);                         // LSB
+                                set_bit(scan_code[1], spd, mode);                                      
+                                set_bit(scan_code[2], spd, mode);                                      
+                                set_bit(scan_code[3], spd, mode);                                      
+                                set_bit(scan_code[4], spd, mode);                                      
+                                set_bit(scan_code[5], spd, mode);                                      
+                                set_bit(scan_code[6], spd, mode);                                      
+                                set_bit(scan_code[7], spd, mode);                         // MSB
+          // パリティビット
+                                set_bit(~^scan_code, spd, mode);                          // 奇数パリティ
+          // ストップビット
+                                set_bit(1'b1, spd, mode);                                              
+                                tclk(spd, mode);
+                                ps2_clk           =   1'b1;                               // 送信終了
+                                if(i == rep-1)
+                                 ;
+                                else
+                                 #(REPEAT_DELAY);
+                              end
+  // BREAKコードF0送信開始
+                              #(INTVL_TO_BREAK_CODE);
+                              ps2_dat             =   1'b0;                               // スタートビット
                               ins_delay(spd, mode);
-                              ps2_clk                       =   1'b0;
-        // データビット送信
-                              set_bit(scan_code[0], spd, mode);                                 // LSB
+                              ps2_clk             =   1'b0;
+          // データビット送信
+                              set_bit(BREAK_CODE[0], spd, mode);                        // LSB
+                              set_bit(BREAK_CODE[1], spd, mode);                                      
+                              set_bit(BREAK_CODE[2], spd, mode);                                      
+                              set_bit(BREAK_CODE[3], spd, mode);                                      
+                              set_bit(BREAK_CODE[4], spd, mode);                                      
+                              set_bit(BREAK_CODE[5], spd, mode);                                      
+                              set_bit(BREAK_CODE[6], spd, mode);                                      
+                              set_bit(BREAK_CODE[7], spd, mode);                        // MSB
+          // パリティビット
+                              set_bit(~^BREAK_CODE, spd, mode);                         // 奇数パリティ
+          // ストップビット
+                              set_bit(1'b1, spd, mode);                                              
+                              tclk(spd, mode);
+                              ps2_clk             =   1'b1;                               // 送信終了
+  // BREAKコードscancode送信開始
+                              #(INTVL_TO_BREAK_CODE);
+                              ps2_dat             =   1'b0;                               // スタートビット
+                              ins_delay(spd, mode);
+                              ps2_clk             =   1'b0;
+          // データビット送信
+                              set_bit(scan_code[0], spd, mode);                         // LSB
                               set_bit(scan_code[1], spd, mode);                                      
                               set_bit(scan_code[2], spd, mode);                                      
                               set_bit(scan_code[3], spd, mode);                                      
                               set_bit(scan_code[4], spd, mode);                                      
                               set_bit(scan_code[5], spd, mode);                                      
                               set_bit(scan_code[6], spd, mode);                                      
-                              set_bit(scan_code[7], spd, mode);                                 // MSB
-        // パリティビット
-                              set_bit(~^scan_code, spd, mode);                                  // 奇数パリティ
-        // ストップビット
+                              set_bit(scan_code[7], spd, mode);                         // MSB
+          // パリティビット
+                              set_bit(~^scan_code, spd, mode);                          // 奇数パリティ
+          // ストップビット
                               set_bit(1'b1, spd, mode);                                              
                               tclk(spd, mode);
-                              ps2_clk                       =   1'b1;                     // 送信終了
-
+                              ps2_clk             =   1'b1;                               // 送信終了
   end
 endtask
 

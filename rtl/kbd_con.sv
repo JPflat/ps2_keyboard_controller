@@ -43,6 +43,10 @@ module kbd_con (
   logic         [7:0]         rx_err;
   logic         [7:0]         tx_err;
   logic         [7:0]         scode_out;
+  logic                       scode_oen;
+
+  logic         [7:0]         seg7_hdgt;
+  logic         [7:0]         seg7_ldgt;
 
   // assign                      o_led                         = mode;
 
@@ -82,12 +86,34 @@ module kbd_con (
                               .tx_err             ( tx_err      )
   );
 
-  kbd_disp	kbd_disp_inst (
+  rm_bcd	rm_bcd_inst (
                               .clk                ( clk50m      ),
                               .rst_n              ( reset_n     ),
                               .scode              ( scode       ),
                               .scode_en           ( scode_en    ),
+                              .scode_out          ( scode_out   ),
+                              .scode_oen          ( scode_oen   )
+  );
 
-                              .scode_out          ( scode_out   )
+  seg7 #(
+                              .P_OUT_REG_EN       ( 1'b1           )
+  )
+  seg7_scode_hdgt_inst (
+                              .clk                ( clk50m         ),
+                              .rst_n              ( reset_n        ),
+                              .en                 ( scode_oen      ),
+                              .in                 ( scode_out[7:4] ),
+                              .out                ( seg7_hdgt      )
+  );
+
+  seg7 #(
+                              .P_OUT_REG_EN       ( 1'b1           )
+  )
+  seg7_scode_ldgt_inst (
+                              .clk                ( clk50m         ),
+                              .rst_n              ( reset_n        ),
+                              .en                 ( scode_oen      ),
+                              .in                 ( scode_out[3:0] ),
+                              .out                ( seg7_ldgt      )
   );
 endmodule
